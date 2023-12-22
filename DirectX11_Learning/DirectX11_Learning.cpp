@@ -2,10 +2,12 @@
 
 #include <DirectXMath.h>
 
+#include "Camera.h"
 #include "GeometryBuilder.h"
 
 #define COBJMACROS
 #define WIN32_LEAN_AND_MEAN
+#include <Windowsx.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
 #include <dxgi1_3.h>
@@ -36,18 +38,119 @@
 #define STR2(x) #x
 #define STR(x) STR2(x)
 
+float lastX = 0;
+float lastY = 0;
+bool firstMouse = true;
+
+bool is_cursor_hidden = false;
+
+bool keys_pressed_[6] = {false};
+PerlinNoise perlin;
+;  // namespace Input
+GeometryBuilder Update() {
+  GeometryBuilder geom;
+  int size = 15;
+  int offset = 2;
+
+  float tileSize = 0.2f;
+  for (int i = 0; i < size; i++) {
+    for (int j = 0; j < size; j++) {
+      Vec3 color = (i + j) % 2 == 0 ? Vec3(0, 0.8, 0) : Vec3(0, 0.5, 0);
+      auto noise = perlin.noise(i, j);
+
+      for (int y = -1; y < noise; y++) {
+        Vec3 position = Vec3(-size / 2, 0, -size / 2) + Vec3(i, y, j);
+
+        geom.PushCube(tileSize, position, color);
+      }
+    }
+  }
+  return geom;
+}
+
 static void FatalError(const char* message) {
   MessageBoxA(NULL, message, "Error", MB_ICONEXCLAMATION);
   ExitProcess(0);
 }
-
+Camera cam_;
 static LRESULT CALLBACK WindowProc(HWND wnd, UINT msg, WPARAM wparam,
                                    LPARAM lparam) {
   switch (msg) {
     case WM_DESTROY:
       PostQuitMessage(0);
       return 0;
+    case WM_LBUTTONDOWN:
+      ShowCursor(is_cursor_hidden);
+      is_cursor_hidden = !is_cursor_hidden;
+      return 0;
+    case WM_MOUSEMOVE: {
+      if (!is_cursor_hidden) {
+        break;
+      }
+
+      float xpos = static_cast<float>(GET_X_LPARAM(lparam));
+      float ypos = static_cast<float>(GET_Y_LPARAM(lparam));
+      if (firstMouse) {
+        lastX = xpos;
+        lastY = ypos;
+        firstMouse = false;
+      }
+
+      float xoffset = lastX - xpos;
+      float yoffset = lastY - ypos;
+
+      lastX = xpos;
+      lastY = ypos;
+
+      cam_.ProcessMouseMovement(xoffset, yoffset);
+    }
+      return 0;
+    case WM_KEYDOWN:
+      switch (wparam) {
+        case 'W':
+          keys_pressed_[0] = true;
+          return 0;
+        case 'S':
+          keys_pressed_[1] = true;
+          return 0;
+        case 'A':
+          keys_pressed_[2] = true;
+          return 0;
+        case 'D':
+          keys_pressed_[3] = true;
+          return 0;
+        case VK_SPACE:
+          keys_pressed_[4] = true;
+          return 0;
+        case VK_CONTROL:
+          keys_pressed_[5] = true;
+          return 0;
+      }
+      return 0;
+    case WM_KEYUP:
+      switch (wparam) {
+        case 'W':
+          keys_pressed_[0] = false;
+          return 0;
+        case 'S':
+          keys_pressed_[1] = false;
+          return 0;
+        case 'A':
+          keys_pressed_[2] = false;
+          return 0;
+        case 'D':
+          keys_pressed_[3] = false;
+          return 0;
+        case VK_SPACE:
+          keys_pressed_[4] = false;
+          return 0;
+        case VK_CONTROL:
+          keys_pressed_[5] = false;
+          return 0;
+      }
+      return 0;
   }
+
   return DefWindowProcW(wnd, msg, wparam, lparam);
 }
 
@@ -84,6 +187,15 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previnstance, LPSTR cmdline,
   // height = rect.bottom - rect.top;
 
   // create window
+  // Create a console window
+  AllocConsole();
+  AttachConsole(GetCurrentProcessId());
+
+  // Redirect the CRT standard input, output and error handles to the console
+  freopen_s((FILE**)stdin, "CONIN$", "r", stdin);
+  freopen_s((FILE**)stdout, "CONOUT$", "w", stdout);
+  freopen_s((FILE**)stderr, "CONOUT$", "w", stderr);
+
   HWND window = CreateWindowExW(exstyle, wc.lpszClassName, L"D3D11 Window",
                                 style, CW_USEDEFAULT, CW_USEDEFAULT, width,
                                 height, NULL, NULL, wc.hInstance, NULL);
@@ -197,22 +309,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previnstance, LPSTR cmdline,
     dxgiDevice->Release();
   }
 
-  GeometryBuilder geom_;
-
-  int size = 15;
-  int offset = 2;
-
-  float tileSize = 0.1f;
-
-  for (int i = 0; i < size; i++) {
-    for (int j = 0; j < size; j++) {
-      Vec3 color = (i + j) % 2 == 0 ? Vec3(0, 0.6, 0.8) : Vec3(0, 0.5, 0.8);
-
-      Vec3 position = Vec3(-size / 2, -size / 2, 0) + Vec3(i, j, 0);
-
-      geom_.PushCube(tileSize, position, color);
-    }
-  }
+  GeometryBuilder geom_ = Update();
 
   ID3D11Buffer* vbuffer;
   {
@@ -230,8 +327,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previnstance, LPSTR cmdline,
   ID3D11Buffer* ibuffer;
   {
     D3D11_BUFFER_DESC desc = {
-        .ByteWidth = static_cast<UINT>(geom_.indices_.size() *
-                                       sizeof(geom_.indices_[0])),
+        .ByteWidth =
+            static_cast<UINT>(geom_.indices_.size() * sizeof(uint32_t)),
         .Usage = D3D11_USAGE_IMMUTABLE,
         .BindFlags = D3D11_BIND_INDEX_BUFFER,
     };
@@ -576,9 +673,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previnstance, LPSTR cmdline,
 
       // setup 4x4c rotation matrix in uniform
       {
-        angle +=
-            delta * 2.0f * (float)M_PI / 20.0f;  // full rotation in 20 seconds
-        angle = fmodf(angle, 2.0f * (float)M_PI);
+        // angle +=
+        //     delta * 2.0f * (float)M_PI / 20.0f;  // full rotation in 20
+        //     seconds
+        // angle = fmodf(angle, 2.0f * (float)M_PI);
+        angle = 0;
         float aspect = (float)width / height;
         float matrix[16]; /*= {
             cosf(angle) * aspect,
@@ -599,26 +698,32 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previnstance, LPSTR cmdline,
             1,
         };*/
 
-        static DirectX::XMFLOAT3 quad_pos = DirectX::XMFLOAT3(0.f, 0.f, 0.f);
+        for (size_t i = 0; i < 6; i++) {
+          if (keys_pressed_[i]) {
+            cam_.ProcessKeyboard((Direction)i, 1.f / 144.f);
+          }
+        }
+
+        static DirectX::XMFLOAT3 center = DirectX::XMFLOAT3(0.f, 0.f, 0.f);
 
         // Translation matrix.
         DirectX::XMMATRIX translationMatrix =
-            DirectX::XMMatrixTranslation(quad_pos.x, quad_pos.y, quad_pos.z);
+            DirectX::XMMatrixTranslation(center.x, center.y, center.z);
 
         // Rotation matrix.
-        DirectX::XMMATRIX rotation_matrix = DirectX::XMMATRIX(matrix);
-        rotation_matrix = DirectX::XMMatrixRotationAxis({1, 0, 0}, angle);
+        // DirectX::XMMATRIX rotation_matrix = DirectX::XMMATRIX(matrix);
+        // rotation_matrix = DirectX::XMMatrixRotationAxis({0, 0, 0}, angle);
 
         // Combine matrices
-        DirectX::XMMATRIX model = rotation_matrix * translationMatrix;
+        DirectX::XMMATRIX model = translationMatrix;
 
         // View matrix.
-        DirectX::XMMATRIX view = DirectX::XMMatrixIdentity();
+        DirectX::XMMATRIX view = cam_.GetViewMatrix();
 
         DirectX::XMMATRIX pos_translation =
-            DirectX::XMMatrixTranslation(0.f, 0.f, 3.f);
+            DirectX::XMMatrixTranslation(0.f, -0.1f, 0.f);
 
-        view = DirectX::XMMatrixMultiply(view, pos_translation);
+        view = DirectX::XMMatrixMultiply(pos_translation, view);
 
         // Projection matrix
         DirectX::XMMATRIX projection = DirectX::XMMatrixPerspectiveFovLH(
