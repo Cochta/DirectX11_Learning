@@ -18,24 +18,25 @@ struct Vertex {
   Vec3 color;
 };
 
-static void Shuffle(std::vector<int>::iterator begin, std::vector<int>::iterator end) {
+static void Shuffle(std::vector<int>::iterator begin,
+                    std::vector<int>::iterator end) {
   std::random_device rd;
   std::mt19937 g(rd());
   std::shuffle(begin, end, g);
 }
 
-class PerlinNoise {
+class Perlin {
  public:
-  PerlinNoise();
-  PerlinNoise(unsigned int seed);
+  std::vector<int> hash_;
 
-  double noise(int x, int z);
+  Perlin();
+  Perlin(std::vector<int> hash);
 
- private:
-  int* p;
-  double fade(double t);
-  double lerp(double t, double a, double b);
-  double grad(int hash, double x, double z);
+  int noise(int x, int y);
+  float lin_inter(float x, float y, float s);
+  float smooth_inter(float x, float y, float s);
+  float noise2d(float x, float y);
+  float perlin2d(float x, float y, float freq, int depth);
 };
 
 class GeometryBuilder {

@@ -45,21 +45,25 @@ bool firstMouse = true;
 bool is_cursor_hidden = false;
 
 bool keys_pressed_[6] = {false};
-PerlinNoise perlin;
+Perlin perlin;
 ;  // namespace Input
 GeometryBuilder Update() {
   GeometryBuilder geom;
-  int size = 15;
+  int sizeXZ = 100;
+  int sizeY = 20;
   int offset = 2;
 
   float tileSize = 0.2f;
-  for (int i = 0; i < size; i++) {
-    for (int j = 0; j < size; j++) {
-      Vec3 color = (i + j) % 2 == 0 ? Vec3(0, 0.8, 0) : Vec3(0, 0.5, 0);
-      auto noise = perlin.noise(i, j);
+  for (int x = 0; x < sizeXZ; x++) {
+    for (int z = 0; z < sizeXZ; z++) {
+      Vec3 color = (x + z) % 2 == 0 ? Vec3(0, 0.8, 0) : Vec3(0, 0.5, 0);
+      float secondary_noise = +perlin.perlin2d(x, z, 0.11f, 1);
+      auto perl = perlin.perlin2d(x + 100, z, 0.03f, 3) * sizeY;
+      perl -= 10;
+      perl += secondary_noise * 4;
 
-      for (int y = -1; y < noise; y++) {
-        Vec3 position = Vec3(-size / 2, 0, -size / 2) + Vec3(i, y, j);
+      for (int y = -5; y < perl; y++) {
+        Vec3 position = Vec3(-sizeXZ / 2, 0, -sizeXZ / 2) + Vec3(x, y, z);
 
         geom.PushCube(tileSize, position, color);
       }
